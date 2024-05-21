@@ -15,11 +15,6 @@ app.get('/', (req, res) => {
 app.get('/scrape/:zipCode', async (req, res) => {
 
   const zipCode = req.params.zipCode;
-  const minPrice = parseInt(req.query.min_price) || 0;
-  const maxPrice = parseInt(req.query.max_price) || Infinity;
-  const beds = parseInt(req.query.beds) || 0;
-  const baths = parseInt(req.query.baths) || 0;
-
   const url = `https://www.realtor.com/realestateandhomes-search/${zipCode}`;
 
   try {
@@ -28,33 +23,28 @@ app.get('/scrape/:zipCode', async (req, res) => {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
       }
     });
-    const $ = cheerio.load(data);
-    const scriptContent = $('#__NEXT_DATA__').html();
 
+    const $ = cheerio.load(data);
+
+    let scriptContent = $('#__NEXT_DATA__').html();
     if (!scriptContent) {
       return res.status(404).send('Data script not found');
     }
-
     const jsonData = JSON.parse(scriptContent);
-    const properties = jsonData?.props?.pageProps?.properties;
 
-    if (!properties) {
-      return res.status(404).send('No property data found');
-    }
-    const listings = properties
+    const listings = jsonData.props.pageProps.searchResults.home_search.results.map(listing => ({
 
-      .filter(property => property.list_price >= minPrice && property.list_price <= maxPrice)
-      .filter(property => property.description.beds >= beds && property.description.baths_consolidated >= baths)
-      .map(property => ({
-        address: property.location.address.line,
-        price: property.list_price,
-        beds: property.description.beds,
-        baths: property.description.baths_consolidated,
-        sqft: property.description.sqft,
-        link: `https://www.realtor.com/realestateandhomes-detail/${property.permalink}`
-      }));
+      address: listing.location.address.line,
+      price: listing.list_price,
+      beds: listing.description.beds,
+      baths: listing.description.baths_consolidated,
+      sqft: listing.description.sqft,
+
+      link: `https://www.realtor.com/realestateandhomes-detail/${listing.permalink}`
+    }));
 
     res.json(listings);
+
   } catch (error) {
     res.status(500).send(`Error fetching data: ${error.message}`);
   }
