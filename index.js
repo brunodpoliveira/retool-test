@@ -14,10 +14,10 @@ app.get('/', (req, res) => {
 
 app.get('/scrape/:zipCode', async (req, res) => {
   const zipCode = req.params.zipCode;
-  const minPrice = req.query.min_price || 0;
-  const maxPrice = req.query.max_price || Infinity;
-  const beds = req.query.beds || 0;
-  const baths = req.query.baths || 0;
+  const minPrice = parseInt(req.query.min_price) || 0;
+  const maxPrice = parseInt(req.query.max_price) || Infinity;
+  const beds = parseInt(req.query.beds) || 0;
+  const baths = parseInt(req.query.baths) || 0;
   const url = `https://www.realtor.com/realestateandhomes-search/${zipCode}`;
 
   try {
@@ -29,12 +29,13 @@ app.get('/scrape/:zipCode', async (req, res) => {
     const $ = cheerio.load(data);
     const scriptContent = $('#__NEXT_DATA__').html();
     if (!scriptContent) {
+      console.error('Data script not found');
       return res.status(404).send('Data script not found');
     }
     const jsonData = JSON.parse(scriptContent);
     const properties = jsonData?.props?.pageProps?.properties;
-
     if (!properties) {
+      console.error('No property data found');
       return res.status(404).send('No property data found');
     }
     const listings = properties
@@ -49,7 +50,14 @@ app.get('/scrape/:zipCode', async (req, res) => {
         link: `https://www.realtor.com/realestateandhomes-detail/${property.permalink}`
       }));
     res.json(listings);
+
   } catch (error) {
+    console.error('Error fetching data:', error.message);
+    if (error.response) {
+      console.error('Response data:', error.response.data);
+      console.error('Response status:', error.response.status);
+      console.error('Response headers:', error.response.headers);
+    }
     res.status(500).send(`Error fetching data: ${error.message}`);
   }
 });
