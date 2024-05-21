@@ -15,40 +15,34 @@ app.get('/', (req, res) => {
 app.get('/scrape/:zipCode', async (req, res) => {
 
   const zipCode = req.params.zipCode;
-  const minPrice = req.query.min_price || 0;
-  const maxPrice = req.query.max_price || Infinity;
-  const beds = req.query.beds || 0;
-  const baths = req.query.baths || 0;
   const url = `https://www.realtor.com/realestateandhomes-search/${zipCode}`;
 
   try {
     const { data } = await axios.get(url, {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
       }
     });
 
     const $ = cheerio.load(data);
-    let listings = [];
 
-    $('.component_property-card').each((i, element) => {
+    let scriptContent = $('#__NEXT_DATA__').html();
+    if (!scriptContent) {
+      return res.status(404).send('Data script not found');
+    }
+    const jsonData = JSON.parse(scriptContent);
 
-      let price = $(element).find('.price').text().replace(/[^\d]/g, ''); // Remove non-numeric characters
-      price = parseInt(price, 10);
+    const listings = jsonData.props.pageProps.searchResults.home_search.results.map(listing => ({
 
-      const listing = {
-        address: $(element).find('.address').text(),
-        price: price,
-        beds: parseInt($(element).find('.beds').text(), 10),
-        baths: parseInt($(element).find('.baths').text(), 10),
-        sqft: $(element).find('.sqft').text(),
-        link: $(element).find('a.jsx-###href-class').attr('href')
-      };
+      address: listing.location.address.line,
+      price: listing.list_price,
+      beds: listing.description.beds,
+      baths: listing.description.baths_consolidated,
+      sqft: listing.description.sqft,
 
-      if (listing.price >= minPrice && listing.price <= maxPrice && listing.beds >= beds && listing.baths >= baths) {
-        listings.push(listing);
-      }
-    });
+      link: `https://www.realtor.com/realestateandhomes-detail/${listing.permalink}`
+    }));
+
     res.json(listings);
 
   } catch (error) {
