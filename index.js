@@ -14,13 +14,10 @@ app.get('/', (req, res) => {
 
 app.get('/scrape/:zipCode', async (req, res) => {
   const zipCode = req.params.zipCode;
-  const minPrice = parseInt(req.query.min_price) || 0;
-  const maxPrice = parseInt(req.query.max_price) || Infinity;
-  const beds = parseInt(req.query.beds) || 0;
-  const baths = parseInt(req.query.baths) || 0;
   const url = `https://www.realtor.com/realestateandhomes-search/${zipCode}`;
 
   try {
+    console.log(`Fetching data from URL: ${url}`);
     const { data } = await axios.get(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
@@ -32,33 +29,41 @@ app.get('/scrape/:zipCode', async (req, res) => {
       console.error('Data script not found');
       return res.status(404).send('Data script not found');
     }
-    const jsonData = JSON.parse(scriptContent);
+
+    let jsonData;
+
+    try {
+      jsonData = JSON.parse(scriptContent);
+    } catch (parseError) {
+
+      console.error('Error parsing JSON data:', parseError.message);
+      return res.status(500).send('Error parsing JSON data');
+    }
     const properties = jsonData?.props?.pageProps?.properties;
     if (!properties) {
       console.error('No property data found');
+      console.error('jsonData:', jsonData);
       return res.status(404).send('No property data found');
     }
-    const listings = properties
-      .filter(property => property.list_price >= minPrice && property.list_price <= maxPrice)
-      .filter(property => property.description.beds >= beds && property.description.baths_consolidated >= baths)
-      .map(property => ({
-        address: property.location.address.line,
-        price: property.list_price,
-        beds: property.description.beds,
-        baths: property.description.baths_consolidated,
-        sqft: property.description.sqft,
-        link: `https://www.realtor.com/realestateandhomes-detail/${property.permalink}`
-      }));
+
+    const listings = properties.map(property => ({
+
+      address: property.location.address.line,
+      price: property.list_price,
+      beds: property.description.beds,
+      baths: property.description.baths_consolidated,
+      sqft: property.description.sqft,
+      link: `https://www.realtor.com/realestateandhomes-detail/${property.permalink}`
+    }));
     res.json(listings);
 
   } catch (error) {
-    console.error('Error fetching data:', error.message);
-    if (error.response) {
-      console.error('Response data:', error.response.data);
-      console.error('Response status:', error.response.status);
-      console.error('Response headers:', error.response.headers);
-    }
-    res.status(500).send(`Error fetching data: ${error.message}`);
+    const errorMsg = error.message;
+    const responseStatus = error.response ? error.response.status : 'Unknown';
+    const responseData = error.response ? error.response.data : 'No response data';
+    console.error('Error fetching data:', errorMsg, 'Response status:', responseStatus);
+    console.error('Response data:', responseData);
+    res.status(500).send(`Error fetching data: ${errorMsg}`);
   }
 });
 
