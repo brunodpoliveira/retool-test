@@ -1,5 +1,5 @@
 const express = require('express');
-const fetch = require('node-fetch'); 
+const fetch = require('node-fetch');
 const cheerio = require('cheerio');
 const cors = require('cors');
 const app = express();
@@ -7,7 +7,9 @@ const app = express();
 app.use(cors());
 
 const PORT = process.env.PORT || 3000;
+
 const SCRAPER_API_KEY = 'c7a210349447adac07a18eff792c6896';
+
 app.get('/', (req, res) => {
   res.send('Welcome to the Realtor.com Scraper API. Use the /scrape/:zipCode endpoint.');
 });
@@ -16,11 +18,28 @@ app.get('/scrape/:zipCode', async (req, res) => {
   const zipCode = req.params.zipCode;
   const minPrice = parseInt(req.query.min_price) || 0;
   const maxPrice = parseInt(req.query.max_price) || Infinity;
-  const beds = parseInt(req.query.beds) || 0;
-  const baths = parseInt(req.query.baths) || 0;
+  const minBeds = parseInt(req.query.min_beds) || 0;
+  const maxBeds = parseInt(req.query.max_beds) || 0;
+  const minBaths = parseInt(req.query.min_baths) || 0;
+  const maxBaths = parseInt(req.query.max_baths) || 0;
 
-  const url = `https://api.scraperapi.com/?api_key=${SCRAPER_API_KEY}&url=https://www.realtor.com/realestateandhomes-search/${zipCode}`;
+  let filters = [];
 
+  if (minBeds || maxBeds) {
+
+    filters.push(`beds-${minBeds || 0}-${maxBeds || minBeds}`);
+  }
+  if (minBaths || maxBaths) {
+
+    filters.push(`baths-${minBaths || 0}-${maxBaths || minBaths}`);
+  }
+
+  if (minPrice || maxPrice) {
+    filters.push(`price-${minPrice || 0}-${maxPrice || minPrice}`);
+  }
+  const filterPath = filters.join('/');
+  const searchUrl = `https://www.realtor.com/realestateandhomes-search/${zipCode}/${filterPath}`;
+  const url = `https://api.scraperapi.com/?api_key=${SCRAPER_API_KEY}&url=${encodeURIComponent(searchUrl)}`;
   try {
     console.log(`Fetching data from URL: ${url}`);
     const response = await fetch(url);
@@ -44,24 +63,23 @@ app.get('/scrape/:zipCode', async (req, res) => {
       console.error('jsonData:', jsonData);
       return res.status(404).send('No property data found');
     }
+    const listings = properties.map(property => ({
+      address: property.location.address.line,
+      price: property.list_price,
+      beds: property.description.beds,
+      baths: property.description.baths_consolidated,
+      sqft: property.description.sqft,
+      link: `https://www.realtor.com/realestateandhomes-detail/${property.permalink}`
+    }));
 
-    const listings = properties
-      .filter(property => property.list_price >= minPrice && property.list_price <= maxPrice)
-      .filter(property => property.description.beds >= beds && property.description.baths_consolidated >= baths)
-      .map(property => ({
-        address: property.location.address.line,
-        price: property.list_price,
-        beds: property.description.beds,
-        baths: property.description.baths_consolidated,
-        sqft: property.description.sqft,
-        link: `https://www.realtor.com/realestateandhomes-detail/${property.permalink}`
-      }));
     res.json(listings);
 
   } catch (error) {
     const errorMsg = error.message;
     const responseStatus = error.response ? error.response.status : 'Unknown';
+    const responseData = error.response ? error.response.data : 'No response data';
     console.error('Error fetching data:', errorMsg, 'Response status:', responseStatus);
+    console.error('Response data:', responseData);
     res.status(500).send(`Error fetching data: ${errorMsg}`);
   }
 });
